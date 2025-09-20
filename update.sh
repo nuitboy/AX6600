@@ -651,6 +651,8 @@ fix_quickstart() {
             exit 1
         fi
     fi
+    echo "luci-app-fix_quickstart移除NAS标签页..."
+    patch -d $BUILD_DIR/feeds/small8/luci-app-quickstart -p0 < $BUILD_DIR/../patches/800-remove-nas.patch
 }
 
 update_oaf_deconfig() {
