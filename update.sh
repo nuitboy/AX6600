@@ -1,4 +1,19 @@
 #!/usr/bin/env bash
+#
+# Copyright (C) 2025 ZqinKing
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 set -e
 set -o errexit
@@ -98,7 +113,7 @@ remove_unwanted_packages() {
         "haproxy" "xray-core" "xray-plugin" "dns2socks" "alist" "hysteria"
         "mosdns" "adguardhome" "ddns-go" "naiveproxy" "shadowsocks-rust"
         "sing-box" "v2ray-core" "v2ray-geodata" "v2ray-plugin" "tuic-client"
-        "chinadns-ng" "ipt2socks" "tcping" "trojan-plus" "simple-obfs" "shadowsocksr-libev"
+        "chinadns-ng" "ipt2socks" "tcping" "trojan-plus" "simple-obfs" "shadowsocksr-libev" 
         "dae" "daed" "mihomo" "geoview" "tailscale" "open-app-filter" "msd_lite"
     )
     local packages_utils=(
@@ -166,10 +181,12 @@ install_small8() {
     ./scripts/feeds install -p small8 -f xray-core xray-plugin dns2tcp dns2socks haproxy hysteria \
         naiveproxy shadowsocks-rust sing-box v2ray-core v2ray-geodata v2ray-geoview v2ray-plugin \
         tuic-client chinadns-ng ipt2socks tcping trojan-plus simple-obfs shadowsocksr-libev \
-        v2dat adguardhome luci-app-adguardhome taskd luci-lib-xterm luci-lib-taskd luci-app-store quickstart \
+        luci-app-passwall v2dat mosdns luci-app-mosdns adguardhome luci-app-adguardhome ddns-go \
+        luci-app-ddns-go taskd luci-lib-xterm luci-lib-taskd luci-app-store quickstart \
         luci-app-quickstart luci-app-istorex luci-app-cloudflarespeedtest netdata luci-app-netdata \
-        luci-app-openclash luci-app-homeproxy luci-app-amlogic oaf open-app-filter luci-app-oaf msd_lite \
-        luci-app-msd_lite cups luci-app-cupsd
+        lucky luci-app-lucky luci-app-openclash luci-app-homeproxy luci-app-amlogic nikki luci-app-nikki \
+        tailscale luci-app-tailscale oaf open-app-filter luci-app-oaf easytier luci-app-easytier \
+        msd_lite luci-app-msd_lite cups luci-app-cupsd
 }
 
 install_fullconenat() {
@@ -304,17 +321,17 @@ fix_hash_value() {
 
 # 应用所有哈希值修正
 apply_hash_fixes() {
-    fix_hash_value \
-        "$BUILD_DIR/package/feeds/packages/smartdns/Makefile" \
-        "a7edb052fea61418c91c7a052f7eb1478fe6d844aec5e3eda0f2fcf82de29a10" \
-        "b11e175970e08115fe3b0d7a543fa8d3a6239d3c24eeecfd8cfd2fef3f52c6c9" \
-        "smartdns"
+    #fix_hash_value \
+    #    "$BUILD_DIR/package/feeds/packages/smartdns/Makefile" \
+    #    "a7edb052fea61418c91c7a052f7eb1478fe6d844aec5e3eda0f2fcf82de29a10" \
+    #    "b11e175970e08115fe3b0d7a543fa8d3a6239d3c24eeecfd8cfd2fef3f52c6c9" \
+    #    "smartdns"
 
-    fix_hash_value \
-        "$BUILD_DIR/package/feeds/packages/smartdns/Makefile" \
-        "a1c084dcc4fb7f87641d706b70168fc3c159f60f37d4b7eac6089ae68f0a18a1" \
-        "ab7d303a538871ae4a70ead2e90d35e24fcc36bc20f5b6c5d963a3e283ea43b1" \
-        "smartdns"
+    #fix_hash_value \
+    #    "$BUILD_DIR/package/feeds/packages/smartdns/Makefile" \
+    #    "a1c084dcc4fb7f87641d706b70168fc3c159f60f37d4b7eac6089ae68f0a18a1" \
+    #    "ab7d303a538871ae4a70ead2e90d35e24fcc36bc20f5b6c5d963a3e283ea43b1" \
+    #    "smartdns"    
 }
 
 update_ath11k_fw() {
@@ -445,6 +462,22 @@ boot() {
 }
 EOF
     chmod +x "$sh_dir/custom_task"
+}
+
+# 应用 Passwall 相关调整
+apply_passwall_tweaks() {
+    # 清理 Passwall 的 chnlist 规则文件
+    local chnlist_path="$BUILD_DIR/feeds/small8/luci-app-passwall/root/usr/share/passwall/rules/chnlist"
+    if [ -f "$chnlist_path" ]; then
+        > "$chnlist_path"
+    fi
+
+    # 调整 Xray 最大 RTT 和 保留记录数量
+    local xray_util_path="$BUILD_DIR/feeds/small8/luci-app-passwall/luasrc/passwall/util_xray.lua"
+    if [ -f "$xray_util_path" ]; then
+        sed -i 's/maxRTT = "1s"/maxRTT = "2s"/g' "$xray_util_path"
+        sed -i 's/sampling = 3/sampling = 5/g' "$xray_util_path"
+    fi
 }
 
 install_opkg_distfeeds() {
@@ -651,8 +684,6 @@ fix_quickstart() {
             exit 1
         fi
     fi
-    echo "luci-app-fix_quickstart移除NAS标签页..."
-    patch -d $BUILD_DIR/feeds/small8/luci-app-quickstart -p0 < $BUILD_DIR/../patches/800-remove-nas.patch
 }
 
 update_oaf_deconfig() {
@@ -867,36 +898,6 @@ add_quickfile() {
     fi
 }
 
-add_bandix() {
-    local repo_url_core="https://github.com/timsaya/openwrt-bandix.git"
-    local target_dir_core="$BUILD_DIR/package/openwrt-bandix"
-
-    if [ -d "$target_dir_core" ]; then
-        rm -rf "$target_dir_core"
-    fi
-    echo "正在添加 openwrt-bandix..."
-    if ! git clone --depth 1 "$repo_url_core" "$target_dir_core"; then
-        echo "错误：从 $repo_url_core 克隆 openwrt-bandix 仓库失败" >&2
-        exit 1
-    fi
-
-    local repo_url_luci="https://github.com/timsaya/luci-app-bandix.git"
-    local target_dir_luci="$BUILD_DIR/package/feeds/luci/luci-app-bandix"
-    if [ -d "$target_dir_luci" ]; then
-        rm -rf "$target_dir_luci"
-    fi
-    echo "正在添加 luci-app-bandix..."
-    if ! git clone --depth 1 "$repo_url_luci" "$target_dir_luci"; then
-        echo "错误：从 $repo_url_luci 克隆 luci-app-bandix 仓库失败" >&2
-        exit 1
-    fi
-}
-
-remove_simple_obs_hash() {
-    echo "移除simple-obs包的hash校验..."
-    sed -i '/^PKG_MIRROR_HASH:=/d' $BUILD_DIR/feeds/small8/simple-obfs/Makefile
-}
-
 # 设置 Nginx 默认配置
 set_nginx_default_config() {
     local nginx_config_path="$BUILD_DIR/feeds/packages/net/nginx-util/files/nginx.config"
@@ -1010,8 +1011,8 @@ main() {
     update_tcping
     add_ax6600_led
     set_custom_task
+    apply_passwall_tweaks
     install_opkg_distfeeds
-    remove_simple_obs_hash
     update_nss_pbuf_performance
     set_build_signature
     update_nss_diag
@@ -1025,7 +1026,6 @@ main() {
     add_timecontrol
     add_gecoosac
     add_quickfile
-    add_bandix
     update_lucky
     fix_rust_compile_error
     update_smartdns
@@ -1042,7 +1042,7 @@ main() {
     update_package "containerd" "releases" "v1.7.27"
     update_package "docker" "tags" "v28.2.2"
     update_package "dockerd" "releases" "v28.2.2"
-    apply_hash_fixes # 调用哈希修正函数
+    # apply_hash_fixes # 调用哈希修正函数
 }
 
 main "$@"
