@@ -181,11 +181,9 @@ install_small8() {
     ./scripts/feeds install -p small8 -f xray-core xray-plugin dns2tcp dns2socks haproxy hysteria \
         naiveproxy shadowsocks-rust sing-box v2ray-core v2ray-geodata v2ray-geoview v2ray-plugin \
         tuic-client chinadns-ng ipt2socks tcping trojan-plus simple-obfs shadowsocksr-libev \
-        v2dat mosdns luci-app-mosdns adguardhome luci-app-adguardhome ddns-go \
-        luci-app-ddns-go taskd luci-lib-xterm luci-lib-taskd luci-app-store quickstart \
+        v2dat adguardhome luci-app-adguardhome taskd luci-lib-xterm luci-lib-taskd luci-app-store quickstart \
         luci-app-quickstart luci-app-istorex luci-app-cloudflarespeedtest netdata luci-app-netdata \
-        lucky luci-app-lucky luci-app-openclash luci-app-homeproxy luci-app-amlogic nikki luci-app-nikki \
-        tailscale luci-app-tailscale oaf open-app-filter luci-app-oaf easytier luci-app-easytier \
+        luci-app-homeproxy luci-app-amlogic oaf open-app-filter luci-app-oaf \
         msd_lite luci-app-msd_lite cups luci-app-cupsd
 }
 
@@ -360,9 +358,6 @@ fix_mkpkg_format_invalid() {
         fi
         if [ -f $BUILD_DIR/feeds/small8/luci-lib-taskd/Makefile ]; then
             sed -i 's/>=1\.0\.3-1/>=1\.0\.3-r1/g' $BUILD_DIR/feeds/small8/luci-lib-taskd/Makefile
-        fi
-        if [ -f $BUILD_DIR/feeds/small8/luci-app-openclash/Makefile ]; then
-            sed -i 's/PKG_RELEASE:=beta/PKG_RELEASE:=1/g' $BUILD_DIR/feeds/small8/luci-app-openclash/Makefile
         fi
         if [ -f $BUILD_DIR/feeds/small8/luci-app-quickstart/Makefile ]; then
             sed -i 's/PKG_VERSION:=0\.8\.16-1/PKG_VERSION:=0\.8\.16/g' $BUILD_DIR/feeds/small8/luci-app-quickstart/Makefile
@@ -638,8 +633,6 @@ function add_backup_info_to_sysupgrade() {
     if [ -f "$conf_path" ]; then
         cat >"$conf_path" <<'EOF'
 /etc/AdGuardHome.yaml
-/etc/easytier
-/etc/lucky/
 EOF
     fi
 }
@@ -657,20 +650,6 @@ function update_script_priority() {
     if [ -d "${pbuf_path%/*}" ] && [ -f "$pbuf_path" ]; then
         sed -i 's/START=.*/START=89/g' "$pbuf_path"
     fi
-
-    # 更新mosdns服务的启动顺序
-    local mosdns_path="$BUILD_DIR/package/feeds/small8/luci-app-mosdns/root/etc/init.d/mosdns"
-    if [ -d "${mosdns_path%/*}" ] && [ -f "$mosdns_path" ]; then
-        sed -i 's/START=.*/START=94/g' "$mosdns_path"
-    fi
-}
-
-update_mosdns_deconfig() {
-    local mosdns_conf="$BUILD_DIR/feeds/small8/luci-app-mosdns/root/etc/config/mosdns"
-    if [ -d "${mosdns_conf%/*}" ] && [ -f "$mosdns_conf" ]; then
-        sed -i 's/8000/300/g' "$mosdns_conf"
-        sed -i 's/5335/5336/g' "$mosdns_conf"
-    fi
 }
 
 fix_quickstart() {
@@ -684,6 +663,8 @@ fix_quickstart() {
             exit 1
         fi
     fi
+    echo "luci-app-fix_quickstart移除NAS标签页..."
+    patch -d $BUILD_DIR/feeds/small8/luci-app-quickstart -p0 < $BUILD_DIR/../patches/800-remove-nas.patch
 }
 
 update_oaf_deconfig() {
@@ -779,36 +760,6 @@ update_geoip() {
     fi
 }
 
-update_lucky() {
-    # 从补丁文件名中提取版本号
-    local version
-    version=$(find "$BASE_PATH/patches" -name "lucky_*.tar.gz" -printf "%f\n" | head -n 1 | sed -n 's/^lucky_\(.*\)_Linux.*$/\1/p')
-    if [ -z "$version" ]; then
-        echo "Warning: 未找到 lucky 补丁文件，跳过更新。" >&2
-        return 1
-    fi
-
-    local makefile_path="$BUILD_DIR/feeds/small8/lucky/Makefile"
-    if [ ! -f "$makefile_path" ]; then
-        echo "Warning: lucky Makefile not found. Skipping." >&2
-        return 1
-    fi
-
-    echo "正在更新 lucky Makefile..."
-    # 使用本地补丁文件，而不是下载
-    local patch_line="\\t[ -f \$(TOPDIR)/../patches/lucky_${version}_Linux_\$(LUCKY_ARCH)_wanji.tar.gz ] && install -Dm644 \$(TOPDIR)/../patches/lucky_${version}_Linux_\$(LUCKY_ARCH)_wanji.tar.gz \$(PKG_BUILD_DIR)/\$(PKG_NAME)_\$(PKG_VERSION)_Linux_\$(LUCKY_ARCH).tar.gz"
-
-    # 确保 Build/Prepare 部分存在，然后在其后添加我们的行
-    if grep -q "Build/Prepare" "$makefile_path"; then
-        sed -i "/Build\\/Prepare/a\\$patch_line" "$makefile_path"
-        # 删除任何现有的 wget 命令
-        sed -i '/wget/d' "$makefile_path"
-        echo "lucky Makefile 更新完成。"
-    else
-        echo "Warning: lucky Makefile 中未找到 'Build/Prepare'。跳过。" >&2
-    fi
-}
-
 fix_rust_compile_error() {
     if [ -f "$BUILD_DIR/feeds/packages/lang/rust/Makefile" ]; then
         sed -i 's/download-ci-llvm=true/download-ci-llvm=false/g' "$BUILD_DIR/feeds/packages/lang/rust/Makefile"
@@ -870,26 +821,28 @@ update_diskman() {
     fi
 }
 
-add_quickfile() {
-    local repo_url="https://github.com/sbwml/luci-app-quickfile.git"
-    local target_dir="$BUILD_DIR/package/emortal/quickfile"
-    if [ -d "$target_dir" ]; then
-        rm -rf "$target_dir"
+add_bandix() {
+    local repo_url_core="https://github.com/timsaya/openwrt-bandix.git"
+    local target_dir_core="$BUILD_DIR/package/openwrt-bandix"
+
+    if [ -d "$target_dir_core" ]; then
+        rm -rf "$target_dir_core"
     fi
-    echo "正在添加 luci-app-quickfile..."
-    if ! git clone --depth 1 "$repo_url" "$target_dir"; then
-        echo "错误：从 $repo_url 克隆 luci-app-quickfile 仓库失败" >&2
+    echo "正在添加 openwrt-bandix..."
+    if ! git clone --depth 1 "$repo_url_core" "$target_dir_core"; then
+        echo "错误：从 $repo_url_core 克隆 openwrt-bandix 仓库失败" >&2
         exit 1
     fi
 
-    local makefile_path="$target_dir/quickfile/Makefile"
-    if [ -f "$makefile_path" ]; then
-        sed -i '/\t\$(INSTALL_BIN) \$(PKG_BUILD_DIR)\/quickfile-\$(ARCH_PACKAGES)/c\
-\tif [ "\$(ARCH_PACKAGES)" = "x86_64" ]; then \\\
-\t\t\$(INSTALL_BIN) \$(PKG_BUILD_DIR)\/quickfile-x86_64 \$(1)\/usr\/bin\/quickfile; \\\
-\telse \\\
-\t\t\$(INSTALL_BIN) \$(PKG_BUILD_DIR)\/quickfile-aarch64_generic \$(1)\/usr\/bin\/quickfile; \\\
-\tfi' "$makefile_path"
+    local repo_url_luci="https://github.com/timsaya/luci-app-bandix.git"
+    local target_dir_luci="$BUILD_DIR/package/feeds/luci/luci-app-bandix"
+    if [ -d "$target_dir_luci" ]; then
+        rm -rf "$target_dir_luci"
+    fi
+    echo "正在添加 luci-app-bandix..."
+    if ! git clone --depth 1 "$repo_url_luci" "$target_dir_luci"; then
+        echo "错误：从 $repo_url_luci 克隆 luci-app-bandix 仓库失败" >&2
+        exit 1
     fi
 }
 
@@ -1015,13 +968,11 @@ main() {
     fix_compile_coremark
     update_dnsmasq_conf
     add_backup_info_to_sysupgrade
-    update_mosdns_deconfig
     fix_quickstart
     update_oaf_deconfig
     add_timecontrol
     add_gecoosac
-    add_quickfile
-    update_lucky
+    add_bandix
     fix_rust_compile_error
     update_smartdns
     update_diskman
